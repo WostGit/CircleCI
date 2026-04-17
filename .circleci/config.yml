@@ -64,7 +64,6 @@ jobs:
             import platform
             import statistics
             import time
-
             from mlx_lm import load, generate
 
             MODEL_ID = "mlx-community/Qwen2-0.5B-Instruct"
@@ -80,48 +79,27 @@ jobs:
             print("=== Environment ===")
             print(f"platform: {platform.platform()}")
             print(f"machine: {platform.machine()}")
-            print(f"processor: {platform.processor()}")
-            print()
+            print(f"processor: {platform.processor()}\n")
             print(f"=== Loading model: {MODEL_ID} ===")
 
             load_t0 = time.perf_counter()
             model, tokenizer = load(MODEL_ID)
             load_s = time.perf_counter() - load_t0
 
-            prompt = tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-
+            prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             prompt_tokens = len(tokenizer.encode(prompt))
 
             print(f"model_load_sec: {load_s:.3f}")
-            print(f"prompt_tokens: {prompt_tokens}")
-            print()
+            print(f"prompt_tokens: {prompt_tokens}\n")
 
             print("=== Warmup ===")
-            _ = generate(
-                model,
-                tokenizer,
-                prompt=prompt,
-                max_tokens=WARMUP_TOKENS,
-                verbose=False,
-            )
-            print(f"warmup_tokens: {WARMUP_TOKENS}")
-            print()
+            _ = generate(model, tokenizer, prompt=prompt, max_tokens=WARMUP_TOKENS, verbose=False)
+            print(f"warmup_tokens: {WARMUP_TOKENS}\n")
 
             results = []
-
             for i in range(RUNS):
                 t0 = time.perf_counter()
-                text = generate(
-                    model,
-                    tokenizer,
-                    prompt=prompt,
-                    max_tokens=MEASURED_TOKENS,
-                    verbose=False,
-                )
+                text = generate(model, tokenizer, prompt=prompt, max_tokens=MEASURED_TOKENS, verbose=False)
                 dt = time.perf_counter() - t0
                 output_tokens = len(tokenizer.encode(text))
                 tok_s = output_tokens / dt if dt > 0 else 0.0
@@ -134,28 +112,15 @@ jobs:
                     "preview": text[:200],
                 }
                 results.append(result)
-
-                print(f"=== Run {i + 1} ===")
-                print(json.dumps(result, indent=2))
-                print()
+                print(f"=== Run {i + 1} ===\n{json.dumps(result, indent=2)}\n")
 
             tps_values = [r["tokens_per_sec"] for r in results]
-            elapsed_values = [r["elapsed_sec"] for r in results]
-            token_values = [r["output_tokens"] for r in results]
-
             summary = {
                 "model": MODEL_ID,
-                "prompt_tokens": prompt_tokens,
-                "warmup_tokens": WARMUP_TOKENS,
-                "measured_max_tokens": MEASURED_TOKENS,
-                "runs": RUNS,
-                "load_sec": load_s,
-                "results": results,
                 "median_tokens_per_sec": statistics.median(tps_values),
                 "mean_tokens_per_sec": statistics.mean(tps_values),
-                "median_elapsed_sec": statistics.median(elapsed_values),
-                "mean_elapsed_sec": statistics.mean(elapsed_values),
-                "median_output_tokens": statistics.median(token_values),
+                "load_sec": load_s,
+                "results": results
             }
 
             with open("artifacts/qwen2-mlx-tps.json", "w") as f:
@@ -163,15 +128,6 @@ jobs:
 
             print("=== Summary ===")
             print(json.dumps(summary, indent=2))
-            print()
-            print("=== Compact Summary ===")
-            for r in results:
-                print(
-                    f"run={r['run']}  elapsed={r['elapsed_sec']:.3f}s  "
-                    f"output_tokens={r['output_tokens']}  tps={r['tokens_per_sec']:.2f}"
-                )
-            print(f"median_tps={summary['median_tokens_per_sec']:.2f}")
-            print(f"mean_tps={summary['mean_tokens_per_sec']:.2f}")
             ' | tee artifacts/qwen2-mlx-tps.txt
 
       - store_artifacts:
@@ -179,6 +135,7 @@ jobs:
           destination: qwen2-mlx-benchmark
 
 workflows:
+  version: 2
   qwen2-mlx-benchmark:
     jobs:
       - benchmark-qwen2-mlx
