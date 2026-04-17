@@ -56,19 +56,18 @@ jobs:
             python -m pip install mlx numpy
 
       - run:
-          name: Write MLX benchmark
+          name: Run MLX benchmark
           command: |
-            mkdir -p .circleci_tmp artifacts
-            cat > .circleci_tmp/bench_mlx.py <<'PY'
+            source .venv/bin/activate
+            mkdir -p artifacts
+            python -c '
             import json
             import platform
             import statistics
             import time
-
             import mlx.core as mx
 
-
-            def bench_matmul(n: int, dtype=mx.float16, warmup: int = 3, runs: int = 10):
+            def bench_matmul(n, dtype=mx.float16, warmup=3, runs=10):
                 a = mx.random.uniform(shape=(n, n), low=-1.0, high=1.0).astype(dtype)
                 b = mx.random.uniform(shape=(n, n), low=-1.0, high=1.0).astype(dtype)
 
@@ -84,8 +83,7 @@ jobs:
                     c = a @ b
                     mx.eval(c)
                     checksum = float(c[0, 0].item())
-                    dt = time.perf_counter() - t0
-                    times.append(dt)
+                    times.append(time.perf_counter() - t0)
 
                 median_s = statistics.median(times)
                 mean_s = statistics.mean(times)
@@ -103,48 +101,36 @@ jobs:
                     "checksum": checksum,
                 }
 
+            print("=== Environment ===")
+            print(f"platform: {platform.platform()}")
+            print(f"machine: {platform.machine()}")
+            print(f"processor: {platform.processor()}")
 
-            def main():
-                print("=== Environment ===")
-                print(f"platform: {platform.platform()}")
-                print(f"machine: {platform.machine()}")
-                print(f"processor: {platform.processor()}")
+            print("\\n=== MLX sanity check ===")
+            x = mx.array([1.0, 2.0, 3.0])
+            mx.eval(x)
+            print(f"array: {x}")
 
-                print("\\n=== MLX sanity check ===")
-                x = mx.array([1.0, 2.0, 3.0])
-                mx.eval(x)
-                print(f"array: {x}")
+            sizes = [2048, 4096, 6144]
+            results = []
 
-                sizes = [2048, 4096, 6144]
-                results = []
+            for n in sizes:
+                print(f"\\n=== Benchmark {n}x{n} float16 matmul ===")
+                r = bench_matmul(n)
+                results.append(r)
+                print(json.dumps(r, indent=2))
 
-                for n in sizes:
-                    print(f"\\n=== Benchmark {n}x{n} float16 matmul ===")
-                    r = bench_matmul(n)
-                    results.append(r)
-                    print(json.dumps(r, indent=2))
+            summary = {
+                "benchmarks": results,
+                "best_tflops_median": max(r["estimated_tflops_median"] for r in results),
+            }
 
-                summary = {
-                    "benchmarks": results,
-                    "best_tflops_median": max(r["estimated_tflops_median"] for r in results),
-                }
+            with open("artifacts/mlx-summary.json", "w") as f:
+                json.dump(summary, f, indent=2)
 
-                with open("artifacts/mlx-summary.json", "w") as f:
-                    json.dump(summary, f, indent=2)
-
-                print("\\n=== Summary ===")
-                print(json.dumps(summary, indent=2))
-
-
-            if __name__ == "__main__":
-                main()
-            PY
-
-      - run:
-          name: Run MLX benchmark
-          command: |
-            source .venv/bin/activate
-            python .circleci_tmp/bench_mlx.py | tee artifacts/mlx-benchmark.txt
+            print("\\n=== Summary ===")
+            print(json.dumps(summary, indent=2))
+            ' | tee artifacts/mlx-benchmark.txt
 
       - store_artifacts:
           path: artifacts
